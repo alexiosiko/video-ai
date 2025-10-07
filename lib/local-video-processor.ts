@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
+import ffmpeg from 'fluent-ffmpeg';
+import { Readable } from 'stream';
 
 export interface LocalVideoSegment {
   id: string;
@@ -218,5 +220,35 @@ Created: ${new Date().toISOString()}
     } catch (error) {
       console.error('Error clearing temp files:', error);
     }
+  }
+
+  async generateMp4Base64(duration: number = 1, width: number = 1080, height: number = 1920): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // Generate a blank video using fluent-ffmpeg
+      const ffmpegCommand = ffmpeg()
+        .input('color=black:s=' + width + 'x' + height + ':d=' + duration)
+        .inputFormat('lavfi')
+        .outputOptions([
+          '-c:v libx264',
+          '-pix_fmt yuv420p',
+          '-t ' + duration,
+          '-movflags faststart'
+        ])
+        .format('mp4');
+
+      const buffers: Buffer[] = [];
+      ffmpegCommand
+        .on('end', () => {
+          const videoBuffer = Buffer.concat(buffers);
+          resolve(videoBuffer.toString('base64'));
+        })
+        .on('error', (err) => {
+          reject(err);
+        })
+        .pipe()
+        .on('data', (chunk: Buffer) => {
+          buffers.push(chunk);
+        });
+    });
   }
 }

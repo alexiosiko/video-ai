@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LocalVideoProcessor } from '@/lib/local-video-processor';
 import fs from 'fs';
 import path from 'path';
+import ffmpeg from 'fluent-ffmpeg';
 
 export async function GET(
   request: NextRequest,
@@ -32,7 +33,27 @@ export async function GET(
     // Check if the file exists
     if (!fs.existsSync(filePath)) {
       console.error('❌ File not found:', filePath);
-      
+
+      // If it's an mp4, generate a blank video and return base64
+      if (path.extname(filename).toLowerCase() === '.mp4') {
+        try {
+          const base64Mp4 = await localProcessor.generateMp4Base64(5, 1080, 1920); // 5s blank video
+          return NextResponse.json({
+            success: true,
+            filename,
+            base64: base64Mp4,
+            contentType: 'video/mp4',
+            note: 'Generated blank MP4 as fallback'
+          });
+        } catch (err) {
+          return NextResponse.json({
+            success: false,
+            error: 'Failed to generate fallback MP4',
+            details: err instanceof Error ? err.message : String(err)
+          }, { status: 500 });
+        }
+      }
+
       // List available files for debugging
       const availableFiles = localProcessor.listDownloadedFiles();
       
