@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
+import { LocalVideoProcessor } from '@/lib/local-video-processor';
 import fs from 'fs';
-import os from 'os';
+import path from 'path';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { filename: string } }
+  context: { params: Promise<{ filename: string }> }
 ) {
   try {
-    const { filename } = params;
-    console.log(`📥 Local development download request for file: ${filename}`);
+    // Await the params
+    const { filename } = await context.params;
+    
+    console.log('📥 Local download request for:', filename);
     
     // In development mode, serve files from temp directory
     const isDevelopment = process.env.NODE_ENV === 'development';
@@ -21,65 +23,57 @@ export async function GET(
       );
     }
 
-    // Check for temp downloads directory
-    const tempDir = path.join(os.tmpdir(), 'video-ai-downloads');
+    const localProcessor = new LocalVideoProcessor();
+    const tempDir = localProcessor.getTempDirectory();
     const filePath = path.join(tempDir, filename);
     
     console.log(`🔍 Looking for file at: ${filePath}`);
     
     if (!fs.existsSync(filePath)) {
-      console.log(`❌ File not found: ${filePath}`);
+      console.error('❌ File not found:', filePath);
+      // List available files for debugging
+      const availableFiles = localProcessor.listDownloadedFiles();
+      
       return NextResponse.json(
-        { error: 'File not found' },
+        { error: 'File not found', requestedFile: filename, availableFiles },
         { status: 404 }
       );
     }
 
-    // Read the file
     const fileBuffer = fs.readFileSync(filePath);
-    const stats = fs.statSync(filePath);
+    const fileStats = fs.statSync(filePath);
     
-    // Determine content type based on file extension
+    // Determine content type
     const ext = path.extname(filename).toLowerCase();
     let contentType = 'application/octet-stream';
-    
-    switch (ext) {
-      case '.mp4':
-        contentType = 'video/mp4';
-        break;
-      case '.srt':
-        contentType = 'text/plain';
-        break;
-      case '.vtt':
-        contentType = 'text/vtt';
-        break;
-      case '.json':
-        contentType = 'application/json';
-        break;
-    }
+    if (ext === '.mp4') contentType = 'video/mp4';
+    else if (ext === '.srt') contentType = 'text/plain';
+    else if (ext === '.json') contentType = 'application/json';
 
-    console.log(`✅ Serving file: ${filename} (${stats.size} bytes, ${contentType})`);
+    console.log(`✅ Serving file: ${filename} (${fileStats.size} bytes, ${contentType})`);
 
     // Return the file with proper headers
     return new NextResponse(fileBuffer, {
-      status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Length': stats.size.toString(),
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Cache-Control': 'no-cache',
+        'Content-Length': fileStats.size.toString(),
       },
     });
 
   } catch (error) {
-    console.error('❌ Error serving local file:', error);
+    console.error('❌ Error serving file:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to serve file', 
-        details: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      },
+      { error: 'Failed to serve file', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
+
+// This is the code block that represents the suggested code change:
+// {
+//   "scripts": {
+//     "build": "next build --no-lint",
+//     // other scripts...
+//   }
+// }
